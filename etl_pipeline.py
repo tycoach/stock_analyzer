@@ -74,28 +74,93 @@ def extract_stock_data(symbols: list) -> dict:
         logger.info(f"Extracted data for symbol: {symbol}")
     return all_data
 
-def transform_stock_data(stock_data: dict) -> dict:
+
+import pandas as pd
+import logging
+from typing import Dict, Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def transform_stock_data(stock_data: dict) -> Dict[str, pd.DataFrame]:
     """
-    Transform the stock data for each symbol into a pandas DataFrame.
+    Transform the stock data for each symbol into a pandas DataFrame with proper error handling.
+
     """
     transformed_data = {}
+    
+    if not isinstance(stock_data, dict):
+        logger.error(f"Expected dictionary input, got {type(stock_data)}")
+        raise TypeError(f"Input must be a dictionary, not {type(stock_data)}")
+    
     for symbol, data in stock_data.items():
-        if data['status'] == 'ok':
-            df = pd.DataFrame(data['values'])
-            df['datetime'] = pd.to_datetime(df['datetime'])
-
-            # Debug information
-            logger.info(f"Symbol {symbol} - Total records before transformation: {len(df)}")
-            logger.info(f"Symbol {symbol} - Unique timestamps: {len(df['datetime'].unique())}")
-
+        try:
+            logger.info(f"Processing symbol: {symbol}")
+            logger.debug(f"Raw data structure for {symbol}: {data.keys() if isinstance(data, dict) else 'Not a dictionary'}")
+            
+            # Handle different possible data structures
+            if isinstance(data, dict):
+                if 'values' in data:
+                    df = pd.DataFrame(data['values'])
+                elif 'data' in data:
+                    df = pd.DataFrame(data['data'])
+                else:
+                    # If the data is already in the correct format
+                    df = pd.DataFrame(data)
+            elif isinstance(data, list):
+                df = pd.DataFrame(data)
+            else:
+                logger.error(f"Unexpected data type for {symbol}: {type(data)}")
+                continue
+            
+            # Ensure required columns exist
+            required_columns = ['datetime', 'close']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                logger.error(f"Missing required columns for {symbol}: {missing_columns}")
+                continue
+            
+            # Convert datetime
+            df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
+            
+            # Remove rows with NaT datetime
+            invalid_dates = df['datetime'].isna().sum()
+            if invalid_dates > 0:
+                logger.warning(f"Removed {invalid_dates} rows with invalid dates for {symbol}")
+                df = df.dropna(subset=['datetime'])
+            
             # Check for duplicate timestamps
             duplicates = df[df.duplicated(subset=['datetime'], keep=False)]
             if not duplicates.empty:
                 logger.warning(f"Found {len(duplicates)} duplicate timestamps for {symbol}")
+                # Keep the last record for each duplicate timestamp
+                df = df.drop_duplicates(subset=['datetime'], keep='last')
+            
+            # Sort by datetime
+            df = df.sort_values('datetime')
+            
+            # Ensure numeric types for price columns
+            numeric_columns = ['open', 'high', 'low', 'close', 'volume']
+            for col in numeric_columns:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Debug information
+            logger.info(f"Symbol {symbol} - Final record count: {len(df)}")
 
             transformed_data[symbol] = df
-            logger.info(f"Transformed data for symbol: {symbol}")
+            
+        except Exception as e:
+            logger.error(f"Error processing {symbol}: {str(e)}")
+            continue
+    
+    if not transformed_data:
+        logger.error("No data was successfully transformed")
+        raise ValueError("No data could be transformed from the input")
+    
     return transformed_data
+
 
 def add_symbol_column(transformed_data: dict) -> pd.DataFrame:
     """
@@ -202,7 +267,6 @@ def main():
         # Combine and process data
         logger.info("Combining data from all symbols...")
         combined_data = add_symbol_column(transformed_data)
-
         # Push to PostgreSQL
         logger.info(f"Pushing data to PostgreSQL... Total records to process: {len(combined_data)}")
         push_to_postgres(combined_data, table_name, db_config)
