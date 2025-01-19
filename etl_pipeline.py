@@ -39,6 +39,12 @@ db_config = {
 # Table name
 table_name = "stock_data"
 
+# Constants
+BATCH_SIZE = 150  
+RETRY_DELAY = 5  # Delay in seconds for retrying API calls
+
+
+
 def fetch_api_data(api_url: str, params: dict = None) -> dict:
     """
     Fetch data from an API and return it as JSON.
@@ -47,7 +53,7 @@ def fetch_api_data(api_url: str, params: dict = None) -> dict:
         response = requests.get(api_url, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
-        logger.info(f"Successfully fetched data from API")
+        logger.info("Successfully fetched data from API")
         return data
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching data from API: {e}")
@@ -58,30 +64,33 @@ def generate_api_url(symbols: list, api_key: str) -> str:
     Generate the API URL for fetching stock data.
     """
     joined_symbols = ','.join(symbols)
-    end_point = f"https://api.twelvedata.com/time_series?interval=2h&symbol={joined_symbols}&apikey={api_key}"
+    endpoint = (
+        f"https://api.twelvedata.com/time_series?interval=2h&symbol={joined_symbols}&apikey={api_key}"
+    )
     logger.info(f"Generated API URL for symbols: {joined_symbols}")
-    return end_point
+    return endpoint
 
 def extract_stock_data(symbols: list) -> dict:
     """
-    Extract stock data from TWELVE DATA API for a list of symbols.
+    Extract stock data from Twelve Data API for a list of symbols.
     """
     all_data = {}
-    url = generate_api_url(symbols, API_KEY)
-    data = fetch_api_data(url)
-    for symbol in symbols:
-        all_data[symbol] = data.get(symbol, {})
-        logger.info(f"Extracted data for symbol: {symbol}")
+    for i in range(0, len(symbols), BATCH_SIZE):
+        batch = symbols[i:i + BATCH_SIZE]
+        url = generate_api_url(batch, API_KEY)
+        try:
+            data = fetch_api_data(url)
+            for symbol in batch:
+                all_data[symbol] = data.get(symbol, {})
+                if not data.get(symbol):
+                    logger.warning(f"No data returned for symbol: {symbol}")
+        except Exception as e:
+            logger.error(f"Error processing batch {batch}: {e}")
+        time.sleep(RETRY_DELAY)  # Avoid hitting rate limits
     return all_data
 
 
-import pandas as pd
-import logging
-from typing import Dict, Optional
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # def transform_stock_data(stock_data: dict) -> dict:
 #     """
@@ -229,7 +238,7 @@ def main():
         # Extract data from API
         logger.info("Starting data extraction from API...")
         stock_data = extract_stock_data(symbol)
-
+        
         # Transform data
         logger.info("Transforming stock data...")
         transformed_data = transform_stock_data(stock_data)
