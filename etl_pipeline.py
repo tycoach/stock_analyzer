@@ -92,33 +92,12 @@ def extract_stock_data(symbols: list) -> dict:
 
 
 
-# def transform_stock_data(stock_data: dict) -> dict:
-#     """
-#     Transform the stock data for each symbol into a pandas DataFrame.
-#     """
-#     transformed_data = {}
-#     for symbol, data in stock_data.items():
-#             df = pd.DataFrame(data['values'])
-#             df['datetime'] = pd.to_datetime(df['datetime'])
-
-#             # Debug information
-#             logger.info(f"Symbol {symbol} - Total records before transformation: {len(df)}")
-#             logger.info(f"Symbol {symbol} - Unique timestamps: {len(df['datetime'].unique())}")
-
-#             # Check for duplicate timestamps
-#             duplicates = df[df.duplicated(subset=['datetime'], keep=False)]
-#             if not duplicates.empty:
-#                 logger.warning(f"Found {len(duplicates)} duplicate timestamps for {symbol}")
-
-#             transformed_data[symbol] = df
-#             logger.info(f"Transformed data for symbol: {symbol}")
-#     return transformed_data
-
-
 def transform_stock_data(stock_data: dict) -> dict:
+    """
+    Transform the stock data for each symbol into a pandas DataFrame.
+    """
     transformed_data = {}
     for symbol, data in stock_data.items():
-        try:
             df = pd.DataFrame(data['values'])
             df['datetime'] = pd.to_datetime(df['datetime'])
 
@@ -133,12 +112,7 @@ def transform_stock_data(stock_data: dict) -> dict:
 
             transformed_data[symbol] = df
             logger.info(f"Transformed data for symbol: {symbol}")
-        except KeyError as e:
-            logger.error(f"Symbol {symbol} - Missing key: {e} in data: {data}")
-        except Exception as e:
-            logger.error(f"Unexpected error for symbol {symbol}: {e}")
     return transformed_data
-
 
 
 def add_symbol_column(transformed_data: dict) -> pd.DataFrame:
@@ -238,7 +212,7 @@ def main():
         # Extract data from API
         logger.info("Starting data extraction from API...")
         stock_data = extract_stock_data(symbol)
-        
+        print("---raw data--",stock_data)
         # Transform data
         logger.info("Transforming stock data...")
         transformed_data = transform_stock_data(stock_data)
