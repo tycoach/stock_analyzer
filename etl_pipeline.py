@@ -83,12 +83,33 @@ from typing import Dict, Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# def transform_stock_data(stock_data: dict) -> dict:
+#     """
+#     Transform the stock data for each symbol into a pandas DataFrame.
+#     """
+#     transformed_data = {}
+#     for symbol, data in stock_data.items():
+#             df = pd.DataFrame(data['values'])
+#             df['datetime'] = pd.to_datetime(df['datetime'])
+
+#             # Debug information
+#             logger.info(f"Symbol {symbol} - Total records before transformation: {len(df)}")
+#             logger.info(f"Symbol {symbol} - Unique timestamps: {len(df['datetime'].unique())}")
+
+#             # Check for duplicate timestamps
+#             duplicates = df[df.duplicated(subset=['datetime'], keep=False)]
+#             if not duplicates.empty:
+#                 logger.warning(f"Found {len(duplicates)} duplicate timestamps for {symbol}")
+
+#             transformed_data[symbol] = df
+#             logger.info(f"Transformed data for symbol: {symbol}")
+#     return transformed_data
+
+
 def transform_stock_data(stock_data: dict) -> dict:
-    """
-    Transform the stock data for each symbol into a pandas DataFrame.
-    """
     transformed_data = {}
     for symbol, data in stock_data.items():
+        try:
             df = pd.DataFrame(data['values'])
             df['datetime'] = pd.to_datetime(df['datetime'])
 
@@ -103,7 +124,12 @@ def transform_stock_data(stock_data: dict) -> dict:
 
             transformed_data[symbol] = df
             logger.info(f"Transformed data for symbol: {symbol}")
+        except KeyError as e:
+            logger.error(f"Symbol {symbol} - Missing key: {e} in data: {data}")
+        except Exception as e:
+            logger.error(f"Unexpected error for symbol {symbol}: {e}")
     return transformed_data
+
 
 
 def add_symbol_column(transformed_data: dict) -> pd.DataFrame:
@@ -213,7 +239,7 @@ def main():
         combined_data = add_symbol_column(transformed_data)
         # Push to PostgreSQL
         logger.info(f"Pushing data to PostgreSQL... Total records to process: {len(combined_data)}")
-        #push_to_postgres(combined_data, table_name, db_config)
+        push_to_postgres(combined_data, table_name, db_config)
 
         logger.info("Data processing completed successfully")
 
